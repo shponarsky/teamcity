@@ -1,27 +1,42 @@
 type: install
-name: TeamCity
-appVersion: 2018.1.3
-version: 1.4.1
+id: teamcity
+baseUrl: https://raw.githubusercontent.com/shponarsky/teamcity/master
+name: TeamCity Build Server
+categories:
+  - apps/dev-tools
+  - apps/popular
+  - apps/dev-and-admin-tools
+
+homepage: https://www.jetbrains.com/teamcity/
+description: /text/description.md
 
 globals:
+  tomcat: 9.0.12-jdk-10.0.2
+  teamCity: 2018.2.1
   DB_PASS: ${fn.password(20)}
+
+  TEAMCITY_ARCHIVE_LINK: https://download.jetbrains.com/teamcity/TeamCity-2018.2.1.war
 
 settings:
   fields:
     - type: spinner
       name: AGENTS_COUNT
-      default: 3
+      default: 1
       caption: Agents count
       min: 1
       max: 3
 
 nodes:
-  - count: 1
-    cloudlets: 48
-    image: jetbrains/teamcity-server:2018.1.3
-    displayName: TeamCity Server
-    nodeGroup: cp
-    startService: false
+  - cloudlets: 48
+    nodeType: tomcat
+    displayName: Server
+    tag: ${globals.tomcat}
+
+  - cloudlets: 36
+    nodeType: mysql
+    displayName: Database
+    nodeGroup: sqldb
+    tag: 5.7-latest
 
   - count: ${settings.AGENTS_COUNT}
     cloudlets: 80
@@ -34,49 +49,48 @@ nodes:
     links:
       - cp:SERVER
 
-  - count: 1
-    cloudlets: 80
-    nodeType: mysql
-    displayName: TeamCity Server
-    nodeGroup: sqldb
-    tag: 5.7-latest
+skipNodeEmails: true
 
 onInstall:
-  - cmd[cp]: wget http://dot.jelastic.com/download/graf/tc/mysql-connector-java-8.0.11.jar -P /data/teamcity_server/datadir/lib/jdbc/
-  - cmd[sqldb]: curl http://dot.jelastic.com/download/graf/tc/setupUser.sh | bash -s ${globals.DB_PASS}
-  - cmd[cp]: wget -qO- http://dot.jelastic.com/download/graf/tc/conf.tar.gz | tar -xzv -C /data/teamcity_server/datadir/
-  - cmd[sqldb]: curl -q http://dot.jelastic.com/download/graf/tc/tc.sql | sed -r 's/change_this_ip/${nodes.sqldb.address}/g'  | sed -r 's@change_this_domain@${env.url}@' | mysql -utc -p${globals.DB_PASS} tc
-  - cmd[cp]: sed -ri 's/change_this_ip/${nodes.sqldb.address}/g' /data/teamcity_server/datadir/config/database.properties
-  - cmd[cp]: sed -ri 's/change_this_db_password/${globals.DB_PASS}/g' /data/teamcity_server/datadir/config/database.properties
-  - cmd[cp]: mkdir /data/teamcity_server/datadir/plugins && cd /data/teamcity_server/datadir/plugins && wget http://dot.jelastic.com/download/graf/tc/groovyPlug.zip
-  - cmd[cp]: cd /data/teamcity_server/datadir/plugins && wget http://dot.jelastic.com/download/graf/tc/rhnpush-plugin.zip
-  - cmd[cp]: chmod 400 /root/.ssh/id_rsa && ssh-keygen -y -f /root/.ssh/id_rsa > /root/.ssh/id_rsa.pub
-  - cmd[build]:
-      - yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
-      - yum-config-manager --enable docker-ce-edge
-      - yum install -y docker-ce
-      - curl http://dot.jelastic.com/download/graf/tc/setup_agent.sh | bash -x
-      - yum install --setopt=skip_missing_names_on_install=False -y java-1.8.0-openjdk-devel.x86_64 git at
-      - systemctl enable atd; systemctl start atd; systemctl enable docker; systemctl start docker
-      - sudo curl -L https://github.com/docker/compose/releases/download/1.21.2/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose; sudo chmod +x /usr/local/bin/docker-compose
-      - wget -O /root/sencha.run https://github.com/Shereef/Sencha-Touch-2/raw/master/SenchaSDKTools-2.0.0-beta3-linux-x64.run
-      - chmod +x /root/sencha.run
-      - yes | /root/sencha.run --prefix /opt/SenchaSDKTools-2.0.0/
-      - sed -i 's/Xmx384m/Xmx8192m/g' /opt/teamcity/bin/agent.sh
-      - get -O jq https://github.com/stedolan/jq/releases/download/jq-1.5/jq-linux64
-      - chmod +x ./jq
-      - cp jq /usr/bin
-      - yum install --setopt=skip_missing_names_on_install=False compat-libstdc++-33.i686 libstdc++.i686 -y
-      - yum install -y squashfs-tools
+  - deploy:
+      name: teamcity-${globals.teamCity}.war
+      context: ROOT
+      archive: https://download.jetbrains.com/teamcity/TeamCity-${globals.teamCity}.war
+  - setup
+
+  -
+#  - cmd[cp]: wget http://dot.jelastic.com/download/graf/tc/mysql-connector-java-8.0.11.jar -P /data/teamcity_server/datadir/lib/jdbc/
+#  - cmd[sqldb]: curl http://dot.jelastic.com/download/graf/tc/setupUser.sh | bash -s ${globals.DB_PASS}
+#  - cmd[cp]: wget -qO- http://dot.jelastic.com/download/graf/tc/conf.tar.gz | tar -xzv -C /data/teamcity_server/datadir/
+#  - cmd[sqldb]: curl -q http://dot.jelastic.com/download/graf/tc/tc.sql | sed -r 's/change_this_ip/${nodes.sqldb.address}/g'  | sed -r 's@change_this_domain@${env.url}@' | mysql -utc -p${globals.DB_PASS} tc
+#  - cmd[cp]: sed -ri 's/change_this_ip/${nodes.sqldb.address}/g' /data/teamcity_server/datadir/config/database.properties
+#  - cmd[cp]: sed -ri 's/change_this_db_password/${globals.DB_PASS}/g' /data/teamcity_server/datadir/config/database.properties
+#  - cmd[cp]: mkdir /data/teamcity_server/datadir/plugins && cd /data/teamcity_server/datadir/plugins && wget http://dot.jelastic.com/download/graf/tc/groovyPlug.zip
+#  - cmd[cp]: cd /data/teamcity_server/datadir/plugins && wget http://dot.jelastic.com/download/graf/tc/rhnpush-plugin.zip
+#  - cmd[cp]: chmod 400 /root/.ssh/id_rsa && ssh-keygen -y -f /root/.ssh/id_rsa > /root/.ssh/id_rsa.pub
+#  - cmd[build]:
+#      - yum-config-manager --add-repo https://download.docker.com/linux/centos/docker-ce.repo
+#      - yum-config-manager --enable docker-ce-edge
+#      - yum install -y docker-ce
+#      - curl http://dot.jelastic.com/download/graf/tc/setup_agent.sh | bash -x
+#      - yum install --setopt=skip_missing_names_on_install=False -y java-1.8.0-openjdk-devel.x86_64 git at
+#      - systemctl enable atd; systemctl start atd; systemctl enable docker; systemctl start docker
+#      - sudo curl -L https://github.com/docker/compose/releases/download/1.21.2/docker-compose-$(uname -s)-$(uname -m) -o /usr/local/bin/docker-compose; sudo chmod +x /usr/local/bin/docker-compose
+#      - wget -O /root/sencha.run https://github.com/Shereef/Sencha-Touch-2/raw/master/SenchaSDKTools-2.0.0-beta3-linux-x64.run
+#      - chmod +x /root/sencha.run
+#      - yes | /root/sencha.run --prefix /opt/SenchaSDKTools-2.0.0/
+#      - sed -i 's/Xmx384m/Xmx8192m/g' /opt/teamcity/bin/agent.sh
+#      - get -O jq https://github.com/stedolan/jq/releases/download/jq-1.5/jq-linux64
+#      - chmod +x ./jq
+#      - cp jq /usr/bin
+#      - yum install --setopt=skip_missing_names_on_install=False compat-libstdc++-33.i686 libstdc++.i686 -y
+#      - yum install -y squashfs-tools
   - api[${nodes.cp.id}]: environment.control.ExecDockerRunCmd
   - forEach(node:nodes.build):
       - api[${@node.id}]: environment.control.ExecDockerRunCmd
-      - cmd[${@node.id}]: iptables -D PREROUTING 1 -tnat | at now + 1 minute
 
 
 success: Successfylly installed.
 
-logo: http://1c57d83a4c5f3a21ec25c050d4c5e37b.app.jelastic.com/xssu/cross/download/RDYYHFIzB1NdBAxPNgU7FkEXDUcIGUYRDhoSPRTQn52JFZFRUBQDwIBQmNTTEBI
-homepage: http://jelastic.com/
 
 
